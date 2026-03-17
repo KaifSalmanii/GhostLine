@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GhostLine Pro • P2P Secure</title>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+        
+        :root {
+            --primary: #00f5ff;
+            --bg-dark: #050505;
+            --card-bg: rgba(255, 255, 255, 0.04);
+            --text-primary: #ffffff;
+            --text-secondary: #a1a1aa;
+        }
+        
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            transition: 0.3s;
+            overflow-x: hidden;
+        }
+        
+        body.light {
+            --bg-dark: #f1f5f9;
+            --card-bg: rgba(15, 23, 42, 0.05);
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --primary: #06b6d4;
+        }
+        
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s;
+        }
+        
+        body.light .glass-card {
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .neon-border {
+            box-shadow: 0 0 15px rgba(0, 245, 255, 0.3);
+            border: 1px solid var(--primary);
+        }
+        
+        body.light .neon-border {
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.3);
+        }
+        
+        /* Video Overlay */
+        #videoOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+            background: rgba(0,0,0,0.9);
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        video {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 20px;
+            background: #111;
+            object-fit: cover;
+            aspect-ratio: 3/4;
+        }
+        
+        .remote-v { border: 2px solid var(--primary); }
+        .local-v {
+            position: absolute;
+            width: 100px;
+            height: 150px;
+            bottom: 100px;
+            right: 30px;
+            border: 2px solid white;
+            z-index: 60;
+            transform: scaleX(-1);
+        }
+        
+        /* Animations */
+        .incoming-call-box {
+            animation: slideIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .chat-bubble-me {
+            background: linear-gradient(135deg, #00f5ff, #00b3cc);
+            color: black;
+            border-radius: 20px 20px 5px 20px;
+            align-self: flex-end;
+        }
+        
+        body.light .chat-bubble-me {
+            background: linear-gradient(135deg, #06b6d4, #0284c8);
+            color: #0f172a;
+        }
+        
+        .chat-bubble-other {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px 20px 20px 5px;
+            align-self: flex-start;
+        }
+        
+        body.light .chat-bubble-other {
+            background: rgba(0, 0, 0, 0.1);
+        }
+        
+        #pinDisplay {
+            font-size: 1.1rem;
+            letter-spacing: 4px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-4">
+    <div id="toast" class="fixed bottom-10 bg-cyan-400 text-black px-6 py-2 rounded-full font-bold hidden z-[100] shadow-2xl"></div>
+
+    <!-- Incoming Call Modal -->
+    <div id="incomingModal" class="fixed inset-0 bg-black/80 z-[100] hidden flex items-center justify-center p-4">
+        <div class="glass-card p-8 rounded-[40px] w-full max-w-xs text-center incoming-call-box neon-border">
+            <div class="w-20 h-20 bg-cyan-400 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl animate-bounce">📞</div>
+            <h3 id="callerName" class="text-xl font-bold mb-1">Ghost</h3>
+            <p class="text-zinc-400 text-sm mb-6 uppercase tracking-widest">Incoming Call...</p>
+            <div class="flex gap-4">
+                <button onclick="answerCall()" class="flex-1 bg-emerald-500 py-3 rounded-2xl font-bold"><i class="fa-solid fa-check"></i></button>
+                <button onclick="declineCall()" class="flex-1 bg-red-500 py-3 rounded-2xl font-bold"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Guide Modal -->
+    <div id="guideModal" class="fixed inset-0 bg-black/80 z-[100] hidden flex items-center justify-center p-4">
+        <div class="glass-card p-8 rounded-[40px] w-full max-w-md text-center">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold flex items-center gap-3"><i class="fa-solid fa-circle-info text-cyan-400"></i> How to Use</h2>
+                <button onclick="hideGuide()" class="text-3xl text-zinc-400 hover:text-white">×</button>
+            </div>
+            <div class="space-y-6 text-left text-sm">
+                <div class="flex gap-4">
+                    <div class="w-8 h-8 rounded-2xl bg-cyan-400/20 flex items-center justify-center flex-shrink-0">1</div>
+                    <div>Enter your name + 8-digit PIN → <strong>CREATE</strong> or <strong>JOIN</strong></div>
+                </div>
+                <div class="flex gap-4">
+                    <div class="w-8 h-8 rounded-2xl bg-cyan-400/20 flex items-center justify-center flex-shrink-0">2</div>
+                    <div>Share PIN or full link with friend</div>
+                </div>
+                <div class="flex gap-4">
+                    <div class="w-8 h-8 rounded-2xl bg-cyan-400/20 flex items-center justify-center flex-shrink-0">3</div>
+                    <div>Friend enters same PIN → <strong>JOIN</strong></div>
+                </div>
+                <div class="flex gap-4">
+                    <div class="w-8 h-8 rounded-2xl bg-cyan-400/20 flex items-center justify-center flex-shrink-0">4</div>
+                    <div>Chat, send files, voice/video calls – fully P2P &amp; secure</div>
+                </div>
+            </div>
+            <button onclick="hideGuide()" class="mt-8 w-full py-4 bg-cyan-400 text-black font-black rounded-2xl text-lg">Got it, Let's Go!</button>
+        </div>
+    </div>
+
+    <!-- Terms & Conditions Modal -->
+    <div id="termsModal" class="fixed inset-0 bg-black/80 z-[100] hidden flex items-center justify-center p-4">
+        <div class="glass-card p-8 rounded-[40px] w-full max-w-md text-center">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold flex items-center gap-3"><i class="fa-solid fa-file-contract text-cyan-400"></i> Terms &amp; Conditions</h2>
+                <button onclick="hideTerms()" class="text-3xl text-zinc-400 hover:text-white">×</button>
+            </div>
+            <div class="space-y-5 text-left text-sm max-h-[60vh] overflow-y-auto">
+                <p class="text-xs text-emerald-400 font-medium">100% Peer-to-Peer • No Server Storage</p>
+                
+                <div class="text-zinc-400 text-xs leading-relaxed">
+                    • All messages, files and calls are sent directly between users using WebRTC (PeerJS).<br>
+                    • No data is stored on any server — nothing is logged or saved.<br>
+                    • Your IP is visible only to the person you connect with (standard P2P behaviour).<br>
+                    • We do not collect any personal information.<br>
+                    • Use at your own responsibility. GhostLine Pro is provided "as is".<br>
+                    • By using this app you agree that you will not use it for illegal purposes.
+                </div>
+                
+                <p class="text-[10px] text-zinc-500">Developed by KaifSalmani • Private &amp; Secure by design</p>
+            </div>
+            <button onclick="hideTerms()" class="mt-8 w-full py-4 bg-cyan-400 text-black font-black rounded-2xl text-lg">I Agree &amp; Continue</button>
+        </div>
+    </div>
+
+    <!-- Video Overlay -->
+    <div id="videoOverlay">
+        <video id="remoteVideo" class="remote-v" autoplay playsinline></video>
+        <video id="localVideo" class="local-v" autoplay muted playsinline></video>
+        <div class="mt-8 flex gap-6">
+            <button id="muteBtn" onclick="toggleMute()" class="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center text-xl"><i class="fa-solid fa-microphone"></i></button>
+            <button onclick="endCall()" class="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center text-2xl shadow-lg shadow-red-500/40"><i class="fa-solid fa-phone-slash"></i></button>
+            <button id="camBtn" onclick="toggleCamera()" class="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center text-xl"><i class="fa-solid fa-video"></i></button>
+        </div>
+    </div>
+
+    <div class="w-full max-w-xl z-10">
+        <header class="flex items-center justify-between py-6">
+            <div class="flex items-center gap-3">
+                <div class="text-2xl">👻</div>
+                <h1 class="text-2xl font-black tracking-tighter">GHOST<span class="text-cyan-400">LINE</span></h1>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div id="onlineStatus" class="hidden text-[10px] bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full font-bold">CONNECTED</div>
+                <button onclick="showGuide()" class="text-cyan-400 hover:text-white transition-colors"><i class="fa-solid fa-circle-info text-xl"></i></button>
+                <button onclick="showTerms()" class="text-cyan-400 hover:text-white transition-colors"><i class="fa-solid fa-file-contract text-xl"></i></button>
+                <button onclick="toggleTheme()" id="themeBtn" class="text-cyan-400 hover:text-white transition-colors"><i class="fa-solid fa-moon text-xl"></i></button>
+            </div>
+        </header>
+
+        <!-- Config Menu -->
+        <div id="configMenu" class="glass-card p-8 rounded-[40px] space-y-6">
+            <div class="bg-emerald-500/10 border border-emerald-400/30 rounded-2xl p-5 text-center">
+                <div class="flex items-center justify-center gap-3 text-emerald-400 text-sm font-medium">
+                    <i class="fa-solid fa-lock text-lg"></i>
+                    <span>End-to-End Private • No data stored on any server • Fully Peer-to-Peer</span>
+                </div>
+            </div>
+
+            <input id="userNameInp" type="text" placeholder="Your Name" class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 outline-none focus:border-cyan-400">
+            
+            <input id="pinInp" type="text" maxlength="8" placeholder="Create 8-Digit PIN" 
+                   class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-center tracking-[0.5em] font-bold">
+            
+            <div class="grid grid-cols-3 gap-4">
+                <button onclick="startSession(true)" class="py-4 bg-cyan-400 text-black font-black rounded-2xl">CREATE</button>
+                <button onclick="startSession(false)" class="py-4 border border-cyan-400 text-cyan-400 font-black rounded-2xl">JOIN</button>
+                <button onclick="startRandomSession()" class="py-4 bg-violet-500 text-white font-black rounded-2xl">RANDOM</button>
+            </div>
+
+            <p onclick="showTerms()" class="text-center text-[10px] text-zinc-400 cursor-pointer hover:text-cyan-400">
+                By using GhostLine you agree to our Terms &amp; Conditions
+            </p>
+        </div>
+
+        <!-- Chat Section -->
+        <div id="chatSection" class="hidden flex flex-col h-[85vh]">
+            
+            <div id="sessionInfo" class="session-info glass-card p-3 rounded-[25px] flex items-center justify-between mb-4 hidden">
+                <div class="flex items-center gap-3 flex-1">
+                    <i class="fa-solid fa-key text-cyan-400"></i>
+                    <div class="flex-1 min-w-0">
+                        <span class="text-xs text-zinc-400 block">SESSION PIN</span>
+                        <span id="pinDisplay" class="font-mono font-bold text-base tracking-widest text-cyan-400 block truncate"></span>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="copyPin()" class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-2xl text-xs font-medium transition"><i class="fa-solid fa-copy"></i> PIN</button>
+                    <button onclick="copyShareLink()" class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-2xl text-xs font-medium transition"><i class="fa-solid fa-share-nodes"></i> LINK</button>
+                </div>
+            </div>
+
+            <div class="glass-card p-4 rounded-[25px] flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-400 to-blue-500 flex items-center justify-center font-bold text-black" id="avatar">?</div>
+                    <div>
+                        <p class="text-xs font-bold" id="peerNameDisplay">Waiting...</p>
+                        <div class="flex gap-2 mt-1">
+                            <button onclick="initiateCall(false)" class="text-[10px] text-cyan-400 font-bold hover:underline">VOICE</button>
+                            <button onclick="initiateCall(true)" class="text-[10px] text-cyan-400 font-bold hover:underline">VIDEO</button>
+                        </div>
+                    </div>
+                </div>
+                <button onclick="location.reload()" class="text-zinc-500 hover:text-red-400"><i class="fa-solid fa-right-from-bracket"></i></button>
+            </div>
+
+            <div id="chatArea" class="flex-1 overflow-y-auto flex flex-col gap-3 p-2 mb-4"></div>
+
+            <div class="glass-card p-2 rounded-[30px] flex items-center gap-2">
+                <label class="w-12 h-12 flex items-center justify-center cursor-pointer text-zinc-400 hover:text-cyan-400">
+                    <i class="fa-solid fa-paperclip"></i>
+                    <input type="file" id="fileInp" class="hidden" onchange="sendFile(this)">
+                </label>
+                <input id="msgInp" type="text" class="flex-1 bg-transparent py-3 outline-none text-sm" placeholder="Type message...">
+                <button onclick="sendMsg()" class="w-12 h-12 bg-cyan-400 text-black rounded-2xl flex items-center justify-center"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Donation Button (ONLY on home/config screen) -->
+    <button id="donationBtn" onclick="window.open('https://kaifsalmani-donation.blogspot.com/?m=1', '_blank')" 
+            class="fixed bottom-24 right-6 glass-card px-5 py-3 rounded-3xl flex items-center gap-3 shadow-2xl z-[90] hover:scale-105 transition">
+        <i class="fa-solid fa-heart text-red-400 text-xl"></i>
+        <span class="font-bold text-sm">Donate ❤️</span>
+    </button>
+
+    <!-- Footer -->
+    <footer class="mt-auto pt-8 text-center text-[10px] text-zinc-400">
+        Developed with ❤️ by <span class="font-bold text-cyan-400">KaifSalmani</span>
+    </footer>
+
+    <script>
+        let peer, conn, myName, myStream, activeCall, otherPeerId, incomingCallData;
+        let isMuted = false, isCamOff = false;
+        let sessionPin = '';
+        let isCreatorSession = false;
+
+        // ====================== AUTO-FILL PIN FROM SHARED LINK ======================
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlPin = urlParams.get('pin');
+        if (urlPin && urlPin.length === 8 && !isNaN(urlPin)) {
+            document.getElementById('pinInp').value = urlPin;
+            showToast("PIN auto-filled from shared link! 🎉");
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            if (type === 'error') {
+                toast.style.backgroundColor = '#ef4444';
+                toast.style.color = 'white';
+            } else {
+                toast.style.backgroundColor = '#22d3ee';
+                toast.style.color = 'black';
+            }
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 2800);
+        }
+
+        function generateRandomPin() {
+            let pin = '';
+            for (let i = 0; i < 8; i++) {
+                pin += Math.floor(Math.random() * 10);
+            }
+            document.getElementById('pinInp').value = pin;
+        }
+
+        function startRandomSession() {
+            generateRandomPin();
+            startSession(true);
+        }
+
+        function startSession(isCreator) {
+            const pinInput = document.getElementById('pinInp').value.trim();
+            myName = document.getElementById('userNameInp').value.trim() || "Ghost";
+            
+            if (!pinInput || pinInput.length !== 8 || isNaN(pinInput)) {
+                showToast("Enter valid 8-digit PIN", "error");
+                return;
+            }
+            
+            sessionPin = pinInput;
+            isCreatorSession = isCreator;
+
+            document.getElementById('configMenu').classList.add('hidden');
+            document.getElementById('chatSection').classList.remove('hidden');
+            document.getElementById('donationBtn').classList.add('hidden');
+
+            peer = isCreator ? new Peer('GHOST-' + pinInput) : new Peer();
+            
+            // Error handling for connection issues
+            peer.on('error', (err) => {
+                console.error(err);
+                if (err.type === 'peer-unavailable') {
+                    showToast("Room not found. Creator must be online first!", "error");
+                } else {
+                    showToast("Connection error: " + (err.message || err.type), "error");
+                }
+            });
+
+            peer.on('open', (id) => {
+                if (!isCreator) {
+                    setupConnection(peer.connect('GHOST-' + pinInput));
+                } else {
+                    document.getElementById('sessionInfo').classList.remove('hidden');
+                    document.getElementById('pinDisplay').innerText = sessionPin;
+                    showToast("Room Created! Share PIN or Link");
+                }
+            });
+
+            peer.on('connection', setupConnection);
+            
+            peer.on('call', (call) => {
+                incomingCallData = call;
+                document.getElementById('callerName').innerText = document.getElementById('peerNameDisplay').innerText || "Unknown";
+                document.getElementById('incomingModal').classList.remove('hidden');
+            });
+        }
+
+        function setupConnection(c) {
+            conn = c;
+            conn.on('open', () => {
+                document.getElementById('onlineStatus').classList.remove('hidden');
+                otherPeerId = conn.peer;
+                conn.send({ type: 'intro', name: myName });
+                showToast("Connected! 🎉");
+            });
+
+            conn.on('data', (data) => {
+                if (data.type === 'intro') {
+                    document.getElementById('peerNameDisplay').innerText = data.name.toUpperCase();
+                    document.getElementById('avatar').innerText = data.name[0].toUpperCase();
+                } 
+                else if (data.type === 'chat') {
+                    addMsg(data.text, 'other');
+                } 
+                else if (data.type === 'file') {
+                    addFileMsg(data, 'other');
+                } 
+                else if (data.type === 'callDeclined') {
+                    showToast("Call was declined", "error");
+                    if (activeCall) activeCall.close();
+                    document.getElementById('videoOverlay').style.display = 'none';
+                }
+            });
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast("Copied to clipboard!");
+            }).catch(() => showToast("Failed to copy", "error"));
+        }
+
+        function copyPin() {
+            if (sessionPin) copyToClipboard(sessionPin);
+        }
+
+        function copyShareLink() {
+            if (!sessionPin) return;
+            
+            const baseUrl = window.location.href.split('?')[0];
+            const shareLink = `\( {baseUrl}?pin= \){sessionPin}`;
+            
+            const shareText = `Join me on GhostLine Pro!\n\nSession PIN: ${sessionPin}\n\nDirect Link: ${shareLink}\n\n1. Open the link (PIN will auto-fill)\n2. Click JOIN\n\nSecure P2P Chat & Calls\nMade by KaifSalmani`;
+            
+            copyToClipboard(shareText);
+        }
+
+        async function initiateCall(video) {
+            try {
+                myStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: video });
+                showVideoUI(video);
+                activeCall = peer.call(otherPeerId, myStream, { metadata: { isVideo: video } });
+                handleStream(activeCall);
+            } catch(e) {
+                showToast("Camera/Mic access denied", "error");
+            }
+        }
+
+        async function answerCall() {
+            const isVideo = incomingCallData.options.metadata ? incomingCallData.options.metadata.isVideo : true;
+            myStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideo });
+            incomingCallData.answer(myStream);
+            showVideoUI(isVideo);
+            handleStream(incomingCallData);
+            document.getElementById('incomingModal').classList.add('hidden');
+        }
+
+        function handleStream(call) {
+            activeCall = call;
+            call.on('stream', (remoteStream) => {
+                document.getElementById('remoteVideo').srcObject = remoteStream;
+            });
+            call.on('close', endCallUI);
+        }
+
+        function declineCall() {
+            if (conn && conn.open) {
+                conn.send({ type: 'callDeclined' });
+            }
+            document.getElementById('incomingModal').classList.add('hidden');
+        }
+
+        function endCall() {
+            if (activeCall) activeCall.close();
+            endCallUI();
+        }
+
+        function endCallUI() {
+            if (myStream) myStream.getTracks().forEach(t => t.stop());
+            document.getElementById('videoOverlay').style.display = 'none';
+            addSysMsg("Call Ended");
+        }
+
+        function showVideoUI(video) {
+            document.getElementById('videoOverlay').style.display = 'flex';
+            document.getElementById('localVideo').srcObject = myStream;
+            document.getElementById('localVideo').style.display = video ? 'block' : 'none';
+        }
+
+        function sendMsg() {
+            const val = document.getElementById('msgInp').value.trim();
+            if (!val || !conn) return;
+            conn.send({ type: 'chat', text: val });
+            addMsg(val, 'me');
+            document.getElementById('msgInp').value = '';
+        }
+
+        function sendFile(input) {
+            const file = input.files[0];
+            if (!file || !conn) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                const data = { type: 'file', file: reader.result, fileName: file.name, fileType: file.type };
+                conn.send(data);
+                addFileMsg(data, 'me');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function toggleMute() {
+            if (!myStream) return;
+            isMuted = !isMuted;
+            myStream.getAudioTracks()[0].enabled = !isMuted;
+            document.getElementById('muteBtn').innerHTML = isMuted 
+                ? '<i class="fa-solid fa-microphone-slash text-red-500"></i>' 
+                : '<i class="fa-solid fa-microphone"></i>';
+        }
+
+        function toggleCamera() {
+            if (!myStream || !myStream.getVideoTracks().length) return;
+            isCamOff = !isCamOff;
+            myStream.getVideoTracks()[0].enabled = !isCamOff;
+            document.getElementById('camBtn').innerHTML = isCamOff 
+                ? '<i class="fa-solid fa-video-slash text-red-500"></i>' 
+                : '<i class="fa-solid fa-video"></i>';
+        }
+
+        function addMsg(text, side) {
+            const div = document.createElement('div');
+            div.className = `chat-bubble-${side} px-5 py-3 max-w-[80%] text-sm shadow-xl`;
+            div.innerText = text;
+            document.getElementById('chatArea').appendChild(div);
+            scrollChat();
+        }
+
+        function addFileMsg(data, side) {
+            const div = document.createElement('div');
+            div.className = `chat-bubble-${side} px-5 py-3 max-w-[80%] text-sm shadow-xl flex items-center gap-3`;
+            div.innerHTML = `<i class="fa-solid fa-file-arrow-down text-xl"></i> <div><p class="text-[10px] opacity-50 uppercase">File</p><a href="\( {data.file}" download=" \){data.fileName}" class="underline font-bold">${data.fileName}</a></div>`;
+            document.getElementById('chatArea').appendChild(div);
+            scrollChat();
+        }
+
+        function addSysMsg(t) {
+            const div = document.createElement('div');
+            div.className = "text-center text-[9px] text-zinc-500 font-bold my-2 tracking-widest";
+            div.innerText = "— " + t.toUpperCase() + " —";
+            document.getElementById('chatArea').appendChild(div);
+            scrollChat();
+        }
+
+        function scrollChat() {
+            const area = document.getElementById('chatArea');
+            area.scrollTop = area.scrollHeight;
+        }
+
+        function toggleTheme() {
+            const bodyEl = document.body;
+            const btn = document.getElementById('themeBtn');
+            
+            if (bodyEl.classList.contains('light')) {
+                bodyEl.classList.remove('light');
+                btn.innerHTML = '<i class="fa-solid fa-moon text-xl"></i>';
+            } else {
+                bodyEl.classList.add('light');
+                btn.innerHTML = '<i class="fa-solid fa-sun text-xl"></i>';
+            }
+        }
+
+        function showGuide() {
+            document.getElementById('guideModal').classList.remove('hidden');
+        }
+        
+        function hideGuide() {
+            document.getElementById('guideModal').classList.add('hidden');
+        }
+
+        function showTerms() {
+            document.getElementById('termsModal').classList.remove('hidden');
+        }
+        
+        function hideTerms() {
+            document.getElementById('termsModal').classList.add('hidden');
+        }
+
+        document.getElementById('msgInp').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMsg();
+        });
+    </script>
+</body>
+</html>
